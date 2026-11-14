@@ -1,8 +1,12 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { SurveySubmissionPayload, SurveyRecord } from '../types/survey';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+// Default Supabase configuration from environment or project credentials
+const defaultSupabaseUrl = 'https://zbrebpssfdoadeyvbldm.supabase.co';
+const defaultSupabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpicmVicHNzZmRvYWRleXZibGRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ2MTYwMTQsImV4cCI6MjExMDE5MjAxNH0.kxJNUgm5TGcZC8I_xUr5j1-64lmuEz4pMNL5ksAVA0g';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() || defaultSupabaseUrl;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || defaultSupabaseAnonKey;
 
 export const isSupabaseConfigured = (): boolean => {
   return Boolean(
@@ -38,7 +42,7 @@ export interface SubmitResponseResult {
   isMock?: boolean;
 }
 
-// Sample responses for initial demonstration when DB is not yet populated
+// Sample responses for fallback preview when DB is completely empty
 export const DEMO_SURVEY_RECORDS: SurveyRecord[] = [
   {
     id: 'demo-1',
@@ -130,10 +134,9 @@ export async function submitSurveyResponse(payload: SurveySubmissionPayload): Pr
   const client = getSupabaseClient();
 
   if (!client) {
-    // If Supabase credentials are not configured yet, notify with clear actionable message
     return {
       success: false,
-      error: 'Supabase credentials are not configured in your environment. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file to store responses.',
+      error: 'Supabase credentials are not configured in your environment.',
       isMock: true,
     };
   }
@@ -186,6 +189,7 @@ export interface FetchResponsesResult {
   records: SurveyRecord[];
   isLive: boolean;
   error?: string;
+  needsRlsPolicy?: boolean;
 }
 
 /**
@@ -198,7 +202,7 @@ export async function fetchSurveyResponses(): Promise<FetchResponsesResult> {
     return {
       records: DEMO_SURVEY_RECORDS,
       isLive: false,
-      error: 'Supabase credentials not configured in .env. Showing sample customer response records for preview.',
+      error: 'Supabase credentials not configured in .env. Showing sample records.',
     };
   }
 
@@ -213,7 +217,8 @@ export async function fetchSurveyResponses(): Promise<FetchResponsesResult> {
       return {
         records: DEMO_SURVEY_RECORDS,
         isLive: false,
-        error: `Supabase query error: ${error.message}. Displaying sample records.`,
+        error: `Supabase query error: ${error.message}`,
+        needsRlsPolicy: error.code === '42501',
       };
     }
 
@@ -221,6 +226,7 @@ export async function fetchSurveyResponses(): Promise<FetchResponsesResult> {
       return {
         records: [],
         isLive: true,
+        needsRlsPolicy: true, // Likely RLS is filtering out rows if no SELECT policy exists
       };
     }
 

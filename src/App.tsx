@@ -29,11 +29,16 @@ const INITIAL_FORM_DATA: SurveyFormData = {
 
 const TOTAL_QUESTIONS = 13;
 
+const isCheckAdminRoute = () => {
+  return (
+    window.location.pathname.startsWith('/admin') ||
+    window.location.hash.toLowerCase().includes('admin')
+  );
+};
+
 function App() {
   const [currentRoute, setCurrentRoute] = useState<'survey' | 'admin'>(() => {
-    return window.location.pathname.startsWith('/admin') || window.location.hash === '#admin'
-      ? 'admin'
-      : 'survey';
+    return isCheckAdminRoute() ? 'admin' : 'survey';
   });
 
   const [formData, setFormData] = useState<SurveyFormData>(INITIAL_FORM_DATA);
@@ -41,16 +46,18 @@ function App() {
   const [isSubmittingFromBar, setIsSubmittingFromBar] = useState<boolean>(false);
   const formRef = useRef<HTMLFormElement>(null);
 
-  // Synchronize route with browser URL history
+  // Synchronize route with browser URL history and hash changes
   useEffect(() => {
-    const handlePopState = () => {
-      const isPathAdmin = 
-        window.location.pathname.startsWith('/admin') || window.location.hash === '#admin';
-      setCurrentRoute(isPathAdmin ? 'admin' : 'survey');
+    const handleRouteSync = () => {
+      setCurrentRoute(isCheckAdminRoute() ? 'admin' : 'survey');
     };
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', handleRouteSync);
+    window.addEventListener('hashchange', handleRouteSync);
+    return () => {
+      window.removeEventListener('popstate', handleRouteSync);
+      window.removeEventListener('hashchange', handleRouteSync);
+    };
   }, []);
 
   const navigateToAdmin = () => {
