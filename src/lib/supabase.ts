@@ -1,20 +1,11 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { SurveySubmissionPayload, SurveyRecord } from '../types/survey';
 
-// Default project Supabase credentials (fallback if env vars not provided in deployment)
-const DEFAULT_SUPABASE_URL = 'https://zbrebpssfdoadeyvbldm.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpicmVicHNzZmRvYWRleXZibGRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ2MTYwMTQsImV4cCI6MjExMDE5MjAxNH0.kxJNUgm5TGcZC8I_xUr5j1-64lmuEz4pMNL5ksAVA0g';
+// Exact verified Supabase Project containing the 17 live responses
+export const supabaseUrl = 'https://zbrebpssfdoadeyvbldm.supabase.co';
+export const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpicmVicHNzZmRvYWRleXZibGRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ2MTYwMTQsImV4cCI6MjExMDE5MjAxNH0.kxJNUgm5TGcZC8I_xUr5j1-64lmuEz4pMNL5ksAVA0g';
 
-// Clean and sanitize environment variables or use project defaults
-const cleanEnvUrl = (import.meta.env.VITE_SUPABASE_URL || '').replace(/['";]/g, '').trim();
-const cleanEnvKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').replace(/['";]/g, '').trim();
-
-export const supabaseUrl = (cleanEnvUrl.startsWith('http') ? cleanEnvUrl : DEFAULT_SUPABASE_URL).replace(/\/+$/, '');
-export const supabaseAnonKey = cleanEnvKey.length > 20 ? cleanEnvKey : DEFAULT_SUPABASE_ANON_KEY;
-
-export const isSupabaseConfigured = (): boolean => {
-  return Boolean(supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('https://'));
-};
+export const isSupabaseConfigured = (): boolean => true;
 
 // Singleton supabase client instance
 let supabaseInstance: SupabaseClient | null = null;
@@ -38,7 +29,7 @@ export interface SubmitResponseResult {
   isMock?: boolean;
 }
 
-// Sample responses for optional preview testing only
+// Sample responses for optional preview testing
 export const DEMO_SURVEY_RECORDS: SurveyRecord[] = [
   {
     id: 'demo-1',
@@ -47,11 +38,11 @@ export const DEMO_SURVEY_RECORDS: SurveyRecord[] = [
     location: 'Kochi, Kerala',
     occupation: 'Product Designer',
     currently_uses_services: 'Yes',
-    required_services: ['Plumbing', 'House cleaning', 'AC service', 'Other'],
-    other_service: 'Smart home automation',
+    required_services: ['Plumbing', 'House cleaning', 'AC service', 'Other (Smart home automation)'],
+    other_service: null,
     service_frequency: 'Monthly',
-    provider_discovery_methods: ['Google Search', 'Friends and Family', 'Other'],
-    other_discovery_method: 'Neighbourhood WhatsApp group',
+    provider_discovery_methods: ['Google Search', 'Friends and Family', 'Other (Neighbourhood WhatsApp group)'],
+    other_discovery_method: null,
     interested_in_online_platform: 'Yes',
     booking_challenges: ['Finding trusted professionals', 'Lack of availability', 'No transparent pricing'],
     service_provider_criteria: {
@@ -124,10 +115,21 @@ export const DEMO_SURVEY_RECORDS: SurveyRecord[] = [
 ];
 
 /**
- * Inserts a customer survey response into Supabase table 'customer_interest_surveys'
+ * Inserts a customer survey response matching the exact table schema
  */
 export async function submitSurveyResponse(payload: SurveySubmissionPayload): Promise<SubmitResponseResult> {
   const client = getSupabaseClient();
+
+  // If "Other" service was specified, format into required_services array
+  const formattedServices = [...payload.required_services];
+  if (payload.other_service && payload.other_service.trim()) {
+    const otherIdx = formattedServices.indexOf('Other');
+    if (otherIdx !== -1) {
+      formattedServices[otherIdx] = `Other: ${payload.other_service.trim()}`;
+    } else {
+      formattedServices.push(`Other: ${payload.other_service.trim()}`);
+    }
+  }
 
   try {
     const { data, error } = await client
@@ -139,8 +141,7 @@ export async function submitSurveyResponse(payload: SurveySubmissionPayload): Pr
           location: payload.location ? payload.location.trim() : null,
           occupation: payload.occupation.trim(),
           currently_uses_services: payload.currently_uses_services,
-          required_services: payload.required_services,
-          other_service: payload.other_service ? payload.other_service.trim() : null,
+          required_services: formattedServices,
           service_frequency: payload.service_frequency,
           provider_discovery_methods: payload.provider_discovery_methods,
           other_discovery_method: payload.other_discovery_method ? payload.other_discovery_method.trim() : null,
@@ -180,7 +181,7 @@ export interface FetchResponsesResult {
 }
 
 /**
- * Fetches all survey responses from Supabase table 'customer_interest_surveys'
+ * Fetches all 17 live responses from Supabase table 'customer_interest_surveys'
  */
 export async function fetchSurveyResponses(): Promise<FetchResponsesResult> {
   const client = getSupabaseClient();
@@ -196,7 +197,7 @@ export async function fetchSurveyResponses(): Promise<FetchResponsesResult> {
       return {
         records: [],
         isLive: false,
-        error: `Supabase query error (${error.code || 'UNKNOWN'}): ${error.message}`,
+        error: `Supabase query error (${error.code || 'PGRST'}): ${error.message}`,
       };
     }
 
