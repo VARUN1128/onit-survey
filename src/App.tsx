@@ -1,10 +1,11 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
 import { ProgressBar } from './components/ProgressBar';
 import { SurveyForm } from './components/SurveyForm';
 import { SuccessScreen } from './components/SuccessScreen';
 import { MobileBottomBar } from './components/MobileBottomBar';
+import { AdminDashboard } from './components/AdminDashboard';
 import { SurveyFormData, CRITERIA_LIST } from './types/survey';
 
 const INITIAL_FORM_DATA: SurveyFormData = {
@@ -29,10 +30,40 @@ const INITIAL_FORM_DATA: SurveyFormData = {
 const TOTAL_QUESTIONS = 13;
 
 function App() {
+  const [currentRoute, setCurrentRoute] = useState<'survey' | 'admin'>(() => {
+    return window.location.pathname.startsWith('/admin') || window.location.hash === '#admin'
+      ? 'admin'
+      : 'survey';
+  });
+
   const [formData, setFormData] = useState<SurveyFormData>(INITIAL_FORM_DATA);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [isSubmittingFromBar, setIsSubmittingFromBar] = useState<boolean>(false);
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Synchronize route with browser URL history
+  useEffect(() => {
+    const handlePopState = () => {
+      const isPathAdmin = 
+        window.location.pathname.startsWith('/admin') || window.location.hash === '#admin';
+      setCurrentRoute(isPathAdmin ? 'admin' : 'survey');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateToAdmin = () => {
+    window.history.pushState({}, '', '/admin');
+    setCurrentRoute('admin');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const navigateToSurvey = () => {
+    window.history.pushState({}, '', '/');
+    setCurrentRoute('survey');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Compute number of completed questions
   const completedCount = useMemo(() => {
@@ -174,7 +205,6 @@ function App() {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     } else {
-      // If all answered, scroll to submit button
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
   };
@@ -182,7 +212,6 @@ function App() {
   const handleSubmitFromMobileBar = () => {
     if (formRef.current) {
       setIsSubmittingFromBar(true);
-      // Trigger native form submission
       formRef.current.requestSubmit();
       setTimeout(() => setIsSubmittingFromBar(false), 1000);
     }
@@ -194,9 +223,14 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // If currently on /admin route, render the Admin Dashboard
+  if (currentRoute === 'admin') {
+    return <AdminDashboard onBackToSurvey={navigateToSurvey} />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-neutral-900 font-sans selection:bg-[#6E76E0]/20 selection:text-[#14143A]">
-      <Header />
+      <Header onOpenAdmin={navigateToAdmin} />
 
       <main className="flex-1">
         {isSubmitted ? (
@@ -238,7 +272,7 @@ function App() {
       </main>
 
       {/* Footer */}
-      <footer className="mt-auto border-t border-neutral-200/80 bg-white py-8 px-4 sm:px-6 pb-20 md:pb-8">
+      <footer className="mt-auto border-t border-neutral-200/80 bg-white py-8 px-4 sm:px-6 pb-24 md:pb-8">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-neutral-500">
           <div className="flex items-center gap-2.5">
             <img src="/onit-logo.svg" alt="ONIT" className="h-6 w-auto" />
@@ -246,6 +280,14 @@ function App() {
           </div>
 
           <div className="flex items-center gap-4 font-medium">
+            <button
+              type="button"
+              onClick={navigateToAdmin}
+              className="text-[#6E76E0] hover:text-[#14143A] font-bold transition-colors cursor-pointer"
+            >
+              /admin (Analytics & Responses)
+            </button>
+            <span className="text-neutral-300">&bull;</span>
             <a
               href="https://www.onitservices.in/home"
               target="_blank"
@@ -254,8 +296,6 @@ function App() {
             >
               Official Website
             </a>
-            <span className="text-neutral-300">&bull;</span>
-            <span className="text-neutral-400">Customer Research Survey</span>
           </div>
         </div>
       </footer>

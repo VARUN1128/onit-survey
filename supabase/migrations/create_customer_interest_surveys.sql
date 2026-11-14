@@ -34,6 +34,7 @@ ALTER TABLE public.customer_interest_surveys ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if any
 DROP POLICY IF EXISTS "Allow anonymous survey submissions" ON public.customer_interest_surveys;
+DROP POLICY IF EXISTS "Allow read survey responses for admin dashboard" ON public.customer_interest_surveys;
 DROP POLICY IF EXISTS "Deny public select" ON public.customer_interest_surveys;
 DROP POLICY IF EXISTS "Deny public update" ON public.customer_interest_surveys;
 DROP POLICY IF EXISTS "Deny public delete" ON public.customer_interest_surveys;
@@ -45,8 +46,11 @@ FOR INSERT
 TO anon, authenticated
 WITH CHECK (true);
 
--- 2. Explicitly ensure no public read access (SELECT) is permitted for anon
--- With RLS enabled and no SELECT policy for anon, all SELECT attempts by anon are automatically denied.
--- Only service_role or authenticated administrators with specific policies can view responses in Supabase dashboard.
+-- 2. Policy: Allow anon and authenticated roles to SELECT survey responses for the /admin dashboard
+CREATE POLICY "Allow read survey responses for admin dashboard"
+ON public.customer_interest_surveys
+FOR SELECT
+TO anon, authenticated
+USING (true);
 
 COMMENT ON TABLE public.customer_interest_surveys IS 'ONIT Customer Interest Survey responses for home service research';

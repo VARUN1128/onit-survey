@@ -75,4 +75,9 @@ export interface SurveySubmissionPayload {
   referral_name: string;
 }
 
+export interface SurveyRecord extends SurveySubmissionPayload {
+  id: string;
+  created_at: string;
+}
+
 export type FormErrors = Partial<Record<keyof SurveyFormData | `criteria_${string}`, string>>;
