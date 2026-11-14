@@ -1,30 +1,26 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { SurveySubmissionPayload, SurveyRecord } from '../types/survey';
 
-// Default Supabase configuration from environment or project credentials
-const defaultSupabaseUrl = 'https://zbrebpssfdoadeyvbldm.supabase.co';
-const defaultSupabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpicmVicHNzZmRvYWRleXZibGRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ2MTYwMTQsImV4cCI6MjExMDE5MjAxNH0.kxJNUgm5TGcZC8I_xUr5j1-64lmuEz4pMNL5ksAVA0g';
+// Default project Supabase credentials (fallback if env vars not provided in deployment)
+const DEFAULT_SUPABASE_URL = 'https://zbrebpssfdoadeyvbldm.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpicmVicHNzZmRvYWRleXZibGRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ2MTYwMTQsImV4cCI6MjExMDE5MjAxNH0.kxJNUgm5TGcZC8I_xUr5j1-64lmuEz4pMNL5ksAVA0g';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() || defaultSupabaseUrl;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || defaultSupabaseAnonKey;
+// Clean and sanitize environment variables or use project defaults
+const cleanEnvUrl = (import.meta.env.VITE_SUPABASE_URL || '').replace(/['";]/g, '').trim();
+const cleanEnvKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').replace(/['";]/g, '').trim();
+
+export const supabaseUrl = (cleanEnvUrl.startsWith('http') ? cleanEnvUrl : DEFAULT_SUPABASE_URL).replace(/\/+$/, '');
+export const supabaseAnonKey = cleanEnvKey.length > 20 ? cleanEnvKey : DEFAULT_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = (): boolean => {
-  return Boolean(
-    supabaseUrl && 
-    supabaseAnonKey && 
-    supabaseUrl.startsWith('https://') &&
-    supabaseUrl !== 'https://your-project.supabase.co'
-  );
+  return Boolean(supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('https://'));
 };
 
 // Singleton supabase client instance
 let supabaseInstance: SupabaseClient | null = null;
 
-export const getSupabaseClient = (): SupabaseClient | null => {
-  if (!isSupabaseConfigured()) {
-    return null;
-  }
-  if (!supabaseInstance && supabaseUrl && supabaseAnonKey) {
+export const getSupabaseClient = (): SupabaseClient => {
+  if (!supabaseInstance) {
     supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: false,
@@ -42,7 +38,7 @@ export interface SubmitResponseResult {
   isMock?: boolean;
 }
 
-// Sample responses for fallback preview when DB is completely empty
+// Sample responses for optional preview testing only
 export const DEMO_SURVEY_RECORDS: SurveyRecord[] = [
   {
     id: 'demo-1',
@@ -133,14 +129,6 @@ export const DEMO_SURVEY_RECORDS: SurveyRecord[] = [
 export async function submitSurveyResponse(payload: SurveySubmissionPayload): Promise<SubmitResponseResult> {
   const client = getSupabaseClient();
 
-  if (!client) {
-    return {
-      success: false,
-      error: 'Supabase credentials are not configured in your environment.',
-      isMock: true,
-    };
-  }
-
   try {
     const { data, error } = await client
       .from('customer_interest_surveys')
@@ -189,7 +177,6 @@ export interface FetchResponsesResult {
   records: SurveyRecord[];
   isLive: boolean;
   error?: string;
-  needsRlsPolicy?: boolean;
 }
 
 /**
@@ -198,14 +185,6 @@ export interface FetchResponsesResult {
 export async function fetchSurveyResponses(): Promise<FetchResponsesResult> {
   const client = getSupabaseClient();
 
-  if (!client) {
-    return {
-      records: DEMO_SURVEY_RECORDS,
-      isLive: false,
-      error: 'Supabase credentials not configured in .env. Showing sample records.',
-    };
-  }
-
   try {
     const { data, error } = await client
       .from('customer_interest_surveys')
@@ -213,33 +192,24 @@ export async function fetchSurveyResponses(): Promise<FetchResponsesResult> {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.warn('Supabase fetch error:', error);
-      return {
-        records: DEMO_SURVEY_RECORDS,
-        isLive: false,
-        error: `Supabase query error: ${error.message}`,
-        needsRlsPolicy: error.code === '42501',
-      };
-    }
-
-    if (!data || data.length === 0) {
+      console.error('Supabase fetch error:', error);
       return {
         records: [],
-        isLive: true,
-        needsRlsPolicy: true, // Likely RLS is filtering out rows if no SELECT policy exists
+        isLive: false,
+        error: `Supabase query error (${error.code || 'UNKNOWN'}): ${error.message}`,
       };
     }
 
     return {
-      records: data as SurveyRecord[],
+      records: (data || []) as SurveyRecord[],
       isLive: true,
     };
   } catch (err: unknown) {
     console.error('Failed to fetch survey responses:', err);
     return {
-      records: DEMO_SURVEY_RECORDS,
+      records: [],
       isLive: false,
-      error: err instanceof Error ? err.message : 'Failed to connect to Supabase database.',
+      error: err instanceof Error ? err.message : 'Network error connecting to Supabase database.',
     };
   }
 }

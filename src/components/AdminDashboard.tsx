@@ -17,14 +17,10 @@ import {
   Star,
   Sparkles,
   Filter,
-  Eye,
-  Database,
-  ExternalLink,
-  Copy,
-  Check
+  Eye
 } from 'lucide-react';
 import { SurveyRecord, CRITERIA_LIST } from '../types/survey';
-import { fetchSurveyResponses, DEMO_SURVEY_RECORDS } from '../lib/supabase';
+import { fetchSurveyResponses, DEMO_SURVEY_RECORDS, supabaseUrl } from '../lib/supabase';
 
 interface AdminDashboardProps {
   onBackToSurvey: () => void;
@@ -32,21 +28,22 @@ interface AdminDashboardProps {
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToSurvey }) => {
   const [liveRecords, setLiveRecords] = useState<SurveyRecord[]>([]);
-  const [useDemoFallback, setUseDemoFallback] = useState<boolean>(false);
+  const [useDemoData, setUseDemoData] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [isLive, setIsLive] = useState<boolean>(false);
-  const [copiedSql, setCopiedSql] = useState<boolean>(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [adoptionFilter, setAdoptionFilter] = useState<'all' | 'Yes' | 'No'>('all');
   const [selectedRecord, setSelectedRecord] = useState<SurveyRecord | null>(null);
 
   const loadData = async () => {
     setLoading(true);
+    setFetchError(null);
     const result = await fetchSurveyResponses();
     setLiveRecords(result.records);
     setIsLive(result.isLive);
-    if (result.records.length === 0) {
-      setUseDemoFallback(false);
+    if (result.error) {
+      setFetchError(result.error);
     }
     setLoading(false);
   };
@@ -55,13 +52,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToSurvey }
     loadData();
   }, []);
 
-  // Records to display (either live from Supabase or fallback preview)
+  // Records to display: Either live database records or user-selected demo preview
   const displayRecords = useMemo(() => {
-    if (useDemoFallback) {
+    if (useDemoData) {
       return DEMO_SURVEY_RECORDS;
     }
     return liveRecords;
-  }, [liveRecords, useDemoFallback]);
+  }, [liveRecords, useDemoData]);
 
   // Filtered records
   const filteredRecords = useMemo(() => {
@@ -225,8 +222,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToSurvey }
     document.body.removeChild(link);
   };
 
-  const sqlCommand = `ALTER TABLE public.customer_interest_surveys DISABLE ROW LEVEL SECURITY;`;
-
   return (
     <div className="min-h-screen bg-[#F8FAFC] pb-16">
       
@@ -247,9 +242,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToSurvey }
 
             <div className="flex items-center gap-2">
               <img src="/onit-logo.svg" alt="ONIT" className="h-6 w-auto" />
-              <span className="font-montserrat text-sm font-extrabold text-[#14143A]">
-                Research Dashboard
-              </span>
+              <div className="flex flex-col">
+                <span className="font-montserrat text-sm font-extrabold text-[#14143A]">
+                  Research Dashboard
+                </span>
+                <span className="text-[10px] text-neutral-400 hidden sm:inline leading-none font-mono">
+                  {supabaseUrl.replace('https://', '')}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -257,12 +257,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToSurvey }
             {isLive ? (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Live Supabase Connected
+                <span>Live Supabase ({liveRecords.length})</span>
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-bold border border-amber-200">
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
-                Preview Mode
+                <span>Connection Issue</span>
               </span>
             )}
 
@@ -292,102 +292,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToSurvey }
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
 
-        {/* Supabase RLS Fix Notification Card (Shown when liveRecords has 0 records) */}
-        {isLive && liveRecords.length === 0 && (
-          <div className="p-5 sm:p-6 rounded-3xl bg-linear-to-r from-amber-50 to-orange-50 border-2 border-amber-300 text-neutral-900 shadow-sm space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
-                  <Database className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-montserrat font-bold text-base text-[#14143A]">
-                    Action Required: Supabase Row-Level Security (RLS) is Hiding Data
-                  </h3>
-                  <p className="text-xs sm:text-sm text-neutral-700 mt-1 leading-relaxed">
-                    We tested and verified that survey submissions are reaching your Supabase table. However, because Postgres <strong>Row Level Security (RLS)</strong> is enabled without a public <code className="bg-white/80 px-1 py-0.5 rounded font-mono font-bold text-amber-900">SELECT</code> policy, Supabase is silently hiding the rows from read queries.
-                  </p>
-                </div>
-              </div>
-
-              {/* Toggle to view Sample/Demo responses */}
+        {/* Fetch Error Notice if any */}
+        {fetchError && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs sm:text-sm flex items-start gap-3 shadow-2xs">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <strong className="font-bold">Supabase Query Error:</strong>
+              <p className="text-rose-800 leading-relaxed font-mono text-xs">{fetchError}</p>
               <button
                 type="button"
-                onClick={() => setUseDemoFallback(!useDemoFallback)}
-                className="shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-amber-300 text-xs font-bold text-[#14143A] hover:bg-amber-100/60 shadow-2xs transition-all cursor-pointer"
+                onClick={() => setUseDemoData(true)}
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 cursor-pointer"
               >
-                <Eye className="w-3.5 h-3.5 text-[#6E76E0]" />
-                <span>{useDemoFallback ? 'Hide Sample Data' : 'Preview with Sample Data'}</span>
+                <Eye className="w-3.5 h-3.5" />
+                <span>Show Preview Data</span>
               </button>
-            </div>
-
-            {/* Step-by-step Solution */}
-            <div className="p-4 bg-white/95 rounded-2xl border border-amber-200/90 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-xs text-[#14143A] flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  Run this 1 SQL line in your Supabase SQL Editor to instantly show all responses:
-                </span>
-                
-                <div className="flex items-center gap-2">
-                  <a
-                    href="https://supabase.com/dashboard/project/zbrebpssfdoadeyvbldm/sql/new"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-[#6E76E0] hover:underline"
-                  >
-                    <span>Open Supabase SQL Editor</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(sqlCommand);
-                      setCopiedSql(true);
-                      setTimeout(() => setCopiedSql(false), 2000);
-                    }}
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-[#14143A] hover:bg-[#2E3180] text-white text-xs font-bold cursor-pointer transition-colors shadow-2xs"
-                  >
-                    {copiedSql ? (
-                      <>
-                        <Check className="w-3 h-3 text-emerald-400" />
-                        <span>Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" />
-                        <span>Copy SQL</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <pre className="font-mono text-xs text-neutral-800 bg-neutral-50 p-3 rounded-xl overflow-x-auto border border-neutral-200 font-bold select-all">
-{sqlCommand}
-              </pre>
-
-              <p className="text-[11px] text-neutral-500">
-                After pasting and clicking <strong>Run</strong> in Supabase, click <strong>Refresh</strong> in this dashboard header and your real responses will appear immediately.
-              </p>
             </div>
           </div>
         )}
 
-        {/* Demo Data Alert Banner */}
-        {useDemoFallback && (
+        {/* Demo Mode Toggle Info */}
+        {useDemoData && (
           <div className="p-3 px-4 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs flex items-center justify-between">
-            <span className="font-medium flex items-center gap-1.5">
+            <span className="font-semibold flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-[#6E76E0]" />
-              Currently previewing sample survey data while waiting for your Supabase SQL command.
+              Currently displaying Sample Demo Data (3 entries)
             </span>
             <button
               type="button"
-              onClick={() => setUseDemoFallback(false)}
+              onClick={() => setUseDemoData(false)}
               className="text-xs font-bold text-[#6E76E0] hover:underline cursor-pointer"
             >
-              Switch back to Live Supabase
+              Switch back to Live Supabase ({liveRecords.length} entries)
             </button>
           </div>
         )}
@@ -405,7 +341,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToSurvey }
             <div className="text-2xl sm:text-3xl font-montserrat font-extrabold text-[#14143A]">
               {loading ? '...' : stats.total}
             </div>
-            <p className="text-[11px] text-neutral-400 mt-1">Total customer submissions</p>
+            <p className="text-[11px] text-neutral-400 mt-1">
+              {useDemoData ? 'Sample data preview' : 'Verified customer submissions'}
+            </p>
           </div>
 
           {/* Adoption Readiness */}
@@ -469,7 +407,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToSurvey }
             <div className="space-y-2.5">
               {Object.entries(stats.serviceCounts)
                 .sort((a, b) => b[1] - a[1])
-                .slice(0, 6)
+                .slice(0, 7)
                 .map(([service, count]) => {
                   const pct = stats.total > 0 ? Math.round((count / stats.total) * 100) : 0;
                   return (
@@ -578,11 +516,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToSurvey }
           {/* Table Header & Search Filters */}
           <div className="p-4 sm:p-6 border-b border-neutral-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
-              <h3 className="font-montserrat font-bold text-base sm:text-lg text-[#14143A]">
-                Customer Submissions
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-montserrat font-bold text-base sm:text-lg text-[#14143A]">
+                  Customer Submissions
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-neutral-100 text-[#14143A] text-xs font-bold">
+                  {displayRecords.length}
+                </span>
+              </div>
               <p className="text-xs text-neutral-500 mt-0.5">
-                Showing {filteredRecords.length} of {displayRecords.length} entries
+                Showing {filteredRecords.length} matching entries
               </p>
             </div>
 
